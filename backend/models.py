@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # --- 1. Well Configuration Models ---
 
@@ -12,6 +12,23 @@ class ReservoirConfig(BaseModel):
     initialPressure: float = Field(default=42, description="Initial reservoir pressure in bar")
     initialTemperature: float = Field(default=40, description="Initial reservoir temperature in °C")
     initialViscosity: float = Field(default=10000, description="Initial dead oil viscosity in cP")
+
+    @model_validator(mode='before')
+    @classmethod
+    def accept_frontend_aliases(cls, values):
+        """
+        Accept both frontend alias names and canonical backend field names.
+        Frontend sends: pressure, temperature, oilViscosity
+        Backend canonical: initialPressure, initialTemperature, initialViscosity
+        """
+        if isinstance(values, dict):
+            if 'pressure' in values and 'initialPressure' not in values:
+                values['initialPressure'] = values['pressure']
+            if 'temperature' in values and 'initialTemperature' not in values:
+                values['initialTemperature'] = values['temperature']
+            if 'oilViscosity' in values and 'initialViscosity' not in values:
+                values['initialViscosity'] = values['oilViscosity']
+        return values
 
 class CssConfig(BaseModel):
     steamTemperature: float = Field(default=280, description="Injected steam temperature in °C")
@@ -80,13 +97,13 @@ class DigitalTwinState(BaseModel):
 
 class HistoricalCycle(BaseModel):
     cycle: int
-    duration: float
+    duration: float   # total cycle duration in days (float for fractional precision)
     steamInjected: float
     avgProduction: float
     maxTemp: float
 
 class ChartDataPoint(BaseModel):
-    day: int
+    day: float   # can be fractional during injection/soak phases
     steam: float
     temp: float
     production: float
@@ -195,10 +212,25 @@ class ScenariosResponse(BaseModel):
     scenarios: List[ScenarioItem]
 
 class SimulateRequest(BaseModel):
+    """Full simulation request — all reservoir and pump fields optional; defaults match INITIAL_CONFIG."""
     steamRate: float
     injectionDuration: float
     soakDuration: float = 1.5
     pumpSpeed: float
+    # Optional CSS
+    steamTemperature: float = 280.0
+    # Optional SRP
+    strokeLength: float = 120.0
+    pumpSize: float = 2.25
+    pumpDepth: float = 1100.0
+    # Optional reservoir
+    permeability: float = 2500.0
+    thickness: float = 25.0
+    porosity: float = 0.32
+    oilSaturation: float = 0.75
+    initialPressure: float = 42.0
+    initialTemperature: float = 40.0
+    initialViscosity: float = 10000.0
 
 # --- 6. Optimization Models ---
 

@@ -111,17 +111,30 @@ def get_scenarios():
 
 @api_v1.post("/scenarios/simulate", response_model=ScenarioResult, summary="Simulate Scenario")
 def simulate_scenario(req: SimulateRequest):
-    """Runs deterministic simulation on given scenario parameters."""
+    """Runs deterministic physics simulation on given scenario parameters."""
+    cfg = state_manager.get_config()
     res = run_simulation_engine(
         steam_rate=req.steamRate,
         injection_duration=req.injectionDuration,
         soak_duration=req.soakDuration,
-        pump_speed=req.pumpSpeed
+        pump_speed=req.pumpSpeed,
+        steam_temperature=req.steamTemperature,
+        stroke_length=req.strokeLength,
+        pump_size=req.pumpSize,
+        pump_depth=req.pumpDepth,
+        permeability=req.permeability,
+        thickness=req.thickness,
+        porosity=req.porosity,
+        oil_saturation=req.oilSaturation,
+        initial_pressure=req.initialPressure,
+        initial_temperature=req.initialTemperature,
+        initial_viscosity=req.initialViscosity,
     )
     state_manager.add_event(
         "system",
         "Simulation Executed",
-        f"Simulated: Steam {req.steamRate} m³/d, Inj {req.injectionDuration} d, Pump {req.pumpSpeed} SPM -> Prod {res.production} bbl/d."
+        f"Simulated: Steam {req.steamRate} m\u00b3/d, Inj {req.injectionDuration} d, "
+        f"Pump {req.pumpSpeed} SPM \u2192 Prod {res.production} bbl/d, Visc {res.oilViscosity:.0f} cP."
     )
     return res
 

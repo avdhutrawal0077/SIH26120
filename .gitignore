@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
 **/node_modules/
+venv/
+**/venv/
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
 
 # Production builds
 dist/

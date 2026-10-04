@@ -277,28 +277,71 @@ class WellService {
   }
 
   async runSimulation(scenarioParams) {
+    // Enrich with current reservoir context so the backend physics chain gets
+    // the correct initial viscosity, permeability, thickness, etc.
+    const cfg = this.currentConfig || {};
+    const r   = cfg.reservoir || {};
+    const s   = cfg.srp || {};
+
+    const enriched = {
+      steamRate:          scenarioParams.steamRate,
+      injectionDuration:  scenarioParams.injectionDuration,
+      soakDuration:       scenarioParams.soakDuration ?? 1.5,
+      pumpSpeed:          scenarioParams.pumpSpeed,
+      steamTemperature:   scenarioParams.steamTemperature ?? cfg.css?.steamTemperature ?? 280,
+      strokeLength:       scenarioParams.strokeLength  ?? s.strokeLength ?? 120,
+      pumpSize:           scenarioParams.pumpSize      ?? s.pumpSize     ?? 2.25,
+      pumpDepth:          scenarioParams.pumpDepth     ?? s.pumpDepth    ?? 1100,
+      permeability:       r.permeability    ?? 2500,
+      thickness:          r.thickness       ?? 25,
+      porosity:           r.porosity        ?? 0.32,
+      oilSaturation:      r.oilSaturation   ?? 0.75,
+      initialPressure:    r.pressure        ?? r.initialPressure    ?? 42,
+      initialTemperature: r.temperature     ?? r.initialTemperature ?? 40,
+      initialViscosity:   r.oilViscosity    ?? r.initialViscosity   ?? 10000,
+    };
+
     const res = await this._fetchApi('/scenarios/simulate', {
       method: 'POST',
-      body: JSON.stringify(scenarioParams)
+      body: JSON.stringify(enriched)
     });
-    if (res) {
-      return res;
-    }
-    // Fallback
-    const { steamRate, injectionDuration, soakDuration = 1.5, pumpSpeed } = scenarioParams;
-    const steamVolume = steamRate * injectionDuration;
-    const heatEnergy = steamVolume * 2.5;
-    const reservoirTemp = 40 + (heatEnergy * 0.1) - (soakDuration * 2);
-    const oilViscosity = Math.max(100, 10000 - (reservoirTemp * 80));
-    let production = (3000 / (oilViscosity / 100)) * (pumpSpeed / 10);
-    production = Math.min(Math.max(production, 5), 80);
+    if (res) return res;
+
+    // Offline fallback — grounded Andrade viscosity + Darcy-style approximation
+    const { steamRate, injectionDuration, soakDuration = 1.5, pumpSpeed,
+            permeability = 2500, thickness = 25,
+            initialTemperature = 40, initialViscosity = 10000,
+            pumpSize = 2.25, strokeLength = 120,
+            oilSaturation = 0.75, initialPressure = 42 } = enriched;
+
+    // Thermal heat balance (condensed)
+    const HEATED_VOL = Math.PI * 64 * thickness;
+    const Q_in      = steamRate * injectionDuration * 0.72 * 2780;
+    const dT        = Q_in / (HEATED_VOL * 2100);
+    const T_peak    = Math.min(initialTemperature + dT, 165);
+    const T_res     = initialTemperature + (T_peak - initialTemperature) * Math.exp(-0.048 * (soakDuration + 20));
+
+    // Andrade/Arrhenius viscosity
+    const B    = 4200;
+    const A_sc = initialViscosity / Math.exp(B / (35 + 273.15));
+    const oilViscosity = Math.max(8, A_sc * Math.exp(B / (Math.max(T_res, 20) + 273.15)));
+
+    // Simplified Darcy inflow
+    const k_ro    = oilSaturation > 0.15 ? 0.85 * Math.pow((oilSaturation - 0.15) / 0.85, 2) : 0.001;
+    const q_in    = (0.00708 * permeability * k_ro * thickness * 3.28084 * initialPressure * 14.5038 * 0.45) / (oilViscosity * 1.05 * 7.6);
+
+    // SRP displacement
+    const mu_pen  = Math.min(0.22, 0.055 * Math.log10(Math.max(oilViscosity, 10) / 500));
+    const eta_v   = Math.max(0.40, 0.85 - Math.max(0, mu_pen));
+    const q_liq   = Math.min(q_in, 0.1166 * pumpSize * pumpSize * strokeLength * pumpSpeed * eta_v);
+    const production = Math.max(0.5, q_liq * (1 - 0.68));
 
     return {
-      reservoirTemperature: parseFloat(reservoirTemp.toFixed(1)),
-      oilViscosity: parseFloat(oilViscosity.toFixed(0)),
-      production: parseFloat(production.toFixed(1)),
-      energyConsumption: parseFloat(heatEnergy.toFixed(0)),
-      steamConsumption: parseFloat(steamVolume.toFixed(1)),
+      reservoirTemperature: parseFloat(T_res.toFixed(1)),
+      oilViscosity:         parseFloat(oilViscosity.toFixed(0)),
+      production:           parseFloat(production.toFixed(1)),
+      energyConsumption:    parseFloat((Q_in / 1_000_000).toFixed(2)), // GJ
+      steamConsumption:     parseFloat((steamRate * injectionDuration).toFixed(1)),
     };
   }
 

@@ -73,7 +73,7 @@ export default function ScenarioSimulation() {
     { key: 'reservoirTemperature', label: 'Reservoir Temp', unit: '°C' },
     { key: 'oilViscosity', label: 'Oil Viscosity', unit: 'cP' },
     { key: 'production', label: 'Production', unit: 'bbl/d' },
-    { key: 'energyConsumption', label: 'Energy Cost', unit: 'MJ' },
+    { key: 'energyConsumption', label: 'Energy Cost', unit: 'GJ' },
   ];
 
   // Prepare chart data
