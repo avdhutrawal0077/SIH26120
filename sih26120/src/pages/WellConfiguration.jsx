@@ -42,7 +42,7 @@ export default function WellConfiguration() {
   const handleReset = async () => {
     setLoading(true);
     const data = await wellService.resetConfig();
-    setConfig(data);
+    setConfig(data.data || data);
     setMessage({ type: 'info', text: 'Configuration reset to defaults.' });
     setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     setLoading(false);
